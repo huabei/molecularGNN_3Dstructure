@@ -9,6 +9,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 import preprocess as pp
+import wandb
 
 
 class MolecularGraphNeuralNetwork(nn.Module):
@@ -135,10 +136,37 @@ class Tester(object):
 
 
 if __name__ == "__main__":
+    wandb.login(key='local-8fe6e6b5840c4c05aaaf6aac5ca8c1fb58abbd1f', host='http://localhost:8080')
+    wandb.init('smtr')
+    dataset = 'smtr'
+    # dataset=yourdataset
 
-    (dataset, property, dim, layer_hidden, layer_output,
-     batch_train, batch_test, lr, lr_decay, decay_interval, iteration,
-     setting) = sys.argv[1:]
+    # The molecular property to be learned.
+    property = 'e(kcalmol^-1)'
+    # property='HOMO(eV)'
+    # property='LUMO(eV)'
+
+    # The setting of a neural network architecture.
+    dim = 50
+    layer_hidden = 6
+    layer_output = 6
+
+    # The setting for optimization.
+    batch_train = 128
+    batch_test = 32
+    lr = 1e-5
+    lr_decay = 0.99
+    decay_interval = 10
+    iteration = 60000
+    wandb.config = {
+        "learning_rate": lr,
+        "epochs": iteration,
+        "batch_size": batch_train
+    }
+    setting = 'test' + str(batch_train) + str(lr)
+    # (dataset, property, dim, layer_hidden, layer_output,
+    #  batch_train, batch_test, lr, lr_decay, decay_interval, iteration,
+    #  setting) = sys.argv[1:]
     (dim, layer_hidden, layer_output, batch_train, batch_test, decay_interval,
      iteration) = map(int, [dim, layer_hidden, layer_output, batch_train,
                             batch_test, decay_interval, iteration])
@@ -203,7 +231,10 @@ if __name__ == "__main__":
         error_test = tester.test(dataset_test)
 
         time = timeit.default_timer() - start
+        wandb.log({"loss": loss_train, 'error_test': error_test})
 
+        # Optional
+        # wandb.watch(model)
         if epoch == 1:
             minutes = time * iteration / 60
             hours = int(minutes / 60)
