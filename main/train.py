@@ -7,9 +7,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-
+import matplotlib.pyplot as plt
 import preprocess as pp
 import wandb
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.metrics import r2_score
 
 
 class MolecularGraphNeuralNetwork(nn.Module):
@@ -94,7 +97,7 @@ class MolecularGraphNeuralNetwork(nn.Module):
             ys = predicted_properties.to('cpu').data.numpy()
             ts, ys = np.concatenate(ts), np.concatenate(ys)
             sum_absolute_error = sum(np.abs(ts-ys))
-            return sum_absolute_error
+            return sum_absolute_error, ts, ys
 
 
 class Trainer(object):
@@ -123,17 +126,37 @@ class Tester(object):
     def test(self, dataset):
         N = len(dataset)
         SAE = 0
+        ts = list()
+        ys = list()
         for i in range(0, N, batch_test):
             data_batch = list(zip(*dataset[i:i+batch_test]))
-            sum_absolute_error = self.model(data_batch, train=False)
+            sum_absolute_error, ts_t, ys_t = self.model(data_batch, train=False)
             SAE += sum_absolute_error
         MAE = SAE / N
-        return MAE
+        ts = np.append(ts, ts_t)
+        ys = np.append(ys, ys_t)
+
+        return MAE, ts, ys
 
     def save_result(self, result, filename):
         with open(filename, 'a') as f:
             f.write(result + '\n')
 
+
+def plot_fit_confidence_bond(x, y, r2):
+    # fit a linear curve an estimate its y-values and their error.
+    a, b = np.polyfit(x, y, deg=1)
+    y_est = a * x + b
+    y_err = x.std() * np.sqrt(1 / len(x) +
+                              (x - x.mean()) ** 2 / np.sum((x - x.mean()) ** 2))
+
+    fig, ax = plt.subplots()
+    ax.plot(x, y_est, '-')
+    # ax.fill_between(x, y_est - y_err, y_est + y_err, alpha=0.2)
+    ax.plot(x, y, 'o', color='tab:brown')
+    # ax.text(0.1, 0.5, 'r2:  ' + str(r2))
+    ax.text(0.1, 0.9, 'r2:  ' + str(r2), horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
+    wandb.log({'chart': fig})
 
 if __name__ == "__main__":
     wandb.login(key='local-8fe6e6b5840c4c05aaaf6aac5ca8c1fb58abbd1f', host='http://localhost:8080')
@@ -157,13 +180,13 @@ if __name__ == "__main__":
     lr = 1e-5
     lr_decay = 0.99
     decay_interval = 10
-    iteration = 60000
+    iteration = 3000
     wandb.config = {
         "learning_rate": lr,
         "epochs": iteration,
         "batch_size": batch_train
     }
-    setting = 'test' + str(batch_train) + str(lr)
+    setting = f'test_{batch_train}_{lr}'
     # (dataset, property, dim, layer_hidden, layer_output,
     #  batch_train, batch_test, lr, lr_decay, decay_interval, iteration,
     #  setting) = sys.argv[1:]
@@ -227,8 +250,8 @@ if __name__ == "__main__":
             trainer.optimizer.param_groups[0]['lr'] *= lr_decay
 
         loss_train = trainer.train(dataset_train)
-        error_dev = tester.test(dataset_dev)
-        error_test = tester.test(dataset_test)
+        error_dev, dev_ts, dev_ys = tester.test(dataset_dev)
+        error_test, test_ts, test_ys = tester.test(dataset_test)
 
         time = timeit.default_timer() - start
         wandb.log({"loss": loss_train, 'error_test': error_test})
@@ -249,5 +272,8 @@ if __name__ == "__main__":
         tester.save_result(result, file_result)
 
         print(result)
-
+    # wandb.log({"test_ts": test_ts, 'test_ys': test_ys})
     print('The training has finished!')
+    r2 = r2_score(test_ts, test_ys)
+    plot_fit_confidence_bond(test_ts, test_ys, r2)
+    wandb.finish()
