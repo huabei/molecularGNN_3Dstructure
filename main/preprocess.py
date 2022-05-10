@@ -54,11 +54,13 @@ def create_datasets(dataset, physical_property, device):
         property_index = property_types.index(physical_property)
 
         dataset = []
-
+        idx_list = list()
         for data in data_original:
 
             data = data.strip().split('\n')
             idx = data[0]
+            idx_list.append(idx)
+            # print(idx)
             property = float(data[-1].split()[property_index])
 
             """Load the atoms and their coordinates of a molecular data."""
@@ -83,12 +85,13 @@ def create_datasets(dataset, physical_property, device):
 
             dataset.append((atoms, distance_matrix, molecular_size, property))
 
-        return dataset
+        return dataset, idx_list
 
-    dataset_train = create_dataset('data_train.txt')
-    dataset_train, dataset_dev = split_dataset(dataset_train, 0.9)
-    dataset_test = create_dataset('data_test.txt')
-
+    dataset_train, idx_train = create_dataset('data_train.txt')
+    dataset_train, dataset_val = split_dataset(dataset_train, 0.9)
+    idx_train, idx_val = split_dataset(idx_train, 0.9)
+    dataset_test, idx_test = create_dataset('data_test.txt')
+    # print(idx_test)
     N_atoms = len(atom_dict)
 
-    return dataset_train, dataset_dev, dataset_test, N_atoms
+    return dataset_train, idx_train, dataset_val, idx_val, dataset_test, idx_test, N_atoms
